@@ -225,75 +225,73 @@ const RRB* rrb_concat(const RRB *left, const RRB *right) {
   if (left->cnt == 0) {
     return right;
   }
-  else if (right->cnt == 0) {
+  if (right->cnt == 0) {
     return left;
   }
-  else {
-    if (right->root == NULL) {
-      // merge left and right tail, if possible
-      RRB *new_rrb = rrb_head_clone(left);
-      new_rrb->cnt += right->cnt;
+  if (right->root == NULL) {
+    // merge left and right tail, if possible
+    RRB *new_rrb = rrb_head_clone(left);
+    new_rrb->cnt += right->cnt;
 
-      // skip merging if left tail is full.
-      if (left->tail_len == RRB_BRANCHING) {
-        new_rrb->tail_len = right->tail_len;
-        return push_down_tail(left, new_rrb, right->tail);
-      }
-      // We can merge both tails into a single tail.
-      else if (left->tail_len + right->tail_len <= RRB_BRANCHING) {
-        const uint32_t new_tail_len = left->tail_len + right->tail_len;
-        LeafNode *new_tail = leaf_node_merge(left->tail, right->tail);
-        new_rrb->tail = new_tail;
-        new_rrb->tail_len = new_tail_len;
-        return new_rrb;
-      }
-      else { // must push down something, and will have elements remaining in
-             // the right tail
-        LeafNode *push_down = leaf_node_create(RRB_BRANCHING);
-        memcpy(&push_down->child[0], &left->tail->child[0],
-               left->tail_len * sizeof(void *));
-        const uint32_t right_cut = RRB_BRANCHING - left->tail_len;
-        memcpy(&push_down->child[left->tail_len], &right->tail->child[0],
-               right_cut * sizeof(void *));
-
-        // this will be strictly positive.
-        const uint32_t new_tail_len = right->tail_len - right_cut;
-        LeafNode *new_tail = leaf_node_create(new_tail_len);
-
-        memcpy(&new_tail->child[0], &right->tail->child[right_cut],
-               new_tail_len * sizeof(void *));
-
-        new_rrb->tail = push_down;
-        new_rrb->tail_len = new_tail_len;
-
-        // This is an imitation, so that push_down_tail works as we intend it
-        // to: Whenever the height has to be increased, it calculates the size
-        // table based upon the old rrb's size, minus the old tail. However,
-        // since we manipulate the old tail to be longer than it actually was,
-        // we have to reflect those changes in the cnt variable.
-        RRB left_imitation;
-        memcpy(&left_imitation, left, sizeof(RRB));
-        left_imitation.cnt = new_rrb->cnt - new_tail_len;
-
-        return push_down_tail(&left_imitation, new_rrb, new_tail);
-      }
+    // skip merging if left tail is full.
+    if (left->tail_len == RRB_BRANCHING) {
+      new_rrb->tail_len = right->tail_len;
+      return push_down_tail(left, new_rrb, right->tail);
     }
-    left = push_down_tail(left, rrb_head_clone(left), NULL);
-    RRB *new_rrb = rrb_mutable_create();
-    new_rrb->cnt = left->cnt + right->cnt;
+    // We can merge both tails into a single tail.
+    if (left->tail_len + right->tail_len <= RRB_BRANCHING) {
+      const uint32_t new_tail_len = left->tail_len + right->tail_len;
+      LeafNode *new_tail = leaf_node_merge(left->tail, right->tail);
+      new_rrb->tail = new_tail;
+      new_rrb->tail_len = new_tail_len;
+      return new_rrb;
+    }
+    // must push down something, and will have elements remaining
+    // the right tail
+    LeafNode *push_down = leaf_node_create(RRB_BRANCHING);
+    memcpy(&push_down->child[0], &left->tail->child[0],
+           left->tail_len * sizeof(void *));
+    const uint32_t right_cut = RRB_BRANCHING - left->tail_len;
+    memcpy(&push_down->child[left->tail_len], &right->tail->child[0],
+           right_cut * sizeof(void *));
 
-    InternalNode *root_candidate = concat_sub_tree(left->root, RRB_SHIFT(left),
-                                                   right->root, RRB_SHIFT(right),
-                                                   true);
+    // this will be strictly positive.
+    const uint32_t new_tail_len = right->tail_len - right_cut;
+    LeafNode *new_tail = leaf_node_create(new_tail_len);
 
-    new_rrb->shift = find_shift((TreeNode *) root_candidate);
-    // must be done before we set sizes.
-    new_rrb->root = (TreeNode *) set_sizes(root_candidate,
-                                           RRB_SHIFT(new_rrb));
-    new_rrb->tail = right->tail;
-    new_rrb->tail_len = right->tail_len;
-    return new_rrb;
+    memcpy(&new_tail->child[0], &right->tail->child[right_cut],
+           new_tail_len * sizeof(void *));
+
+    new_rrb->tail = push_down;
+    new_rrb->tail_len = new_tail_len;
+
+    // This is an imitation, so that push_down_tail works as we intend it
+    // to: Whenever the height has to be increased, it calculates the size
+    // table based upon the old rrb's size, minus the old tail. However,
+    // since we manipulate the old tail to be longer than it actually was,
+    // we have to reflect those changes in the cnt variable.
+    RRB left_imitation;
+    memcpy(&left_imitation, left, sizeof(RRB));
+    left_imitation.cnt = new_rrb->cnt - new_tail_len;
+
+    return push_down_tail(&left_imitation, new_rrb, new_tail);
   }
+
+  left = push_down_tail(left, rrb_head_clone(left), NULL);
+  RRB *new_rrb = rrb_mutable_create();
+  new_rrb->cnt = left->cnt + right->cnt;
+
+  InternalNode *root_candidate = concat_sub_tree(left->root, RRB_SHIFT(left),
+                                                 right->root, RRB_SHIFT(right),
+                                                 true);
+
+  new_rrb->shift = find_shift((TreeNode *) root_candidate);
+  // must be done before we set sizes.
+  new_rrb->root = (TreeNode *) set_sizes(root_candidate,
+                                         RRB_SHIFT(new_rrb));
+  new_rrb->tail = right->tail;
+  new_rrb->tail_len = right->tail_len;
+  return new_rrb;
 }
 
 static InternalNode* concat_sub_tree(TreeNode *left_node, uint32_t left_shift,
@@ -309,7 +307,7 @@ static InternalNode* concat_sub_tree(TreeNode *left_node, uint32_t left_shift,
                       false);
     return rebalance(left_internal, centre_node, NULL, left_shift, is_top);
   }
-  else if (left_shift < right_shift) {
+  if (left_shift < right_shift) {
     InternalNode *right_internal = (InternalNode *) right_node;
     InternalNode *centre_node =
       concat_sub_tree(left_node, left_shift,
@@ -318,39 +316,34 @@ static InternalNode* concat_sub_tree(TreeNode *left_node, uint32_t left_shift,
                       false);
     return rebalance(NULL, centre_node, right_internal, right_shift, is_top);
   }
-  else { // we have same height
-    if (left_shift == LEAF_NODE_SHIFT) { // We're dealing with leaf nodes
-      LeafNode *left_leaf = (LeafNode *) left_node;
-      LeafNode *right_leaf = (LeafNode *) right_node;
-      // We don't do this if we're not at top, as we'd have to zip stuff above
-      // as well.
-      if (is_top && (left_leaf->len + right_leaf->len) <= RRB_BRANCHING) {
-        // Can put them in a single node
-        LeafNode *merged = leaf_node_merge(left_leaf, right_leaf);
-        return internal_node_new_above1((InternalNode *) merged);
-      }
-      else {
-        InternalNode *left_internal = (InternalNode *) left_node;
-        InternalNode *right_internal = (InternalNode *) right_node;
-        return internal_node_new_above(left_internal, right_internal);
-      }
+  // we have same height
+  if (left_shift == LEAF_NODE_SHIFT) { // We're dealing with leaf nodes
+    LeafNode *left_leaf = (LeafNode *) left_node;
+    LeafNode *right_leaf = (LeafNode *) right_node;
+    // We don't do this if we're not at top, as we'd have to zip stuff above
+    // as well.
+    if (is_top && (left_leaf->len + right_leaf->len) <= RRB_BRANCHING) {
+      // Can put them in a single node
+      LeafNode *merged = leaf_node_merge(left_leaf, right_leaf);
+      return internal_node_new_above1((InternalNode *) merged);
     }
-
-    else { // two internal nodes with same height. Move both down
-      InternalNode *left_internal = (InternalNode *) left_node;
-      InternalNode *right_internal = (InternalNode *) right_node;
-      InternalNode *centre_node =
-        concat_sub_tree((TreeNode *) left_internal->child[left_internal->len - 1],
-                        DEC_SHIFT(left_shift),
-                        (TreeNode *) right_internal->child[0],
-                        DEC_SHIFT(right_shift),
-                        false);
-      // can be optimised: since left_shift == right_shift, we'll end up in this
-      // block again.
-      return rebalance(left_internal, centre_node, right_internal, left_shift,
-                       is_top);
-    }
+    InternalNode *left_internal = (InternalNode *) left_node;
+    InternalNode *right_internal = (InternalNode *) right_node;
+    return internal_node_new_above(left_internal, right_internal);
   }
+  // two internal nodes with same height. Move both down
+  InternalNode *left_internal = (InternalNode *) left_node;
+  InternalNode *right_internal = (InternalNode *) right_node;
+  InternalNode *centre_node =
+    concat_sub_tree((TreeNode *) left_internal->child[left_internal->len - 1],
+                    DEC_SHIFT(left_shift),
+                    (TreeNode *) right_internal->child[0],
+                    DEC_SHIFT(right_shift),
+                    false);
+  // can be optimised: since left_shift == right_shift, we'll end up in this
+  // block again.
+  return rebalance(left_internal, centre_node, right_internal, left_shift,
+                   is_top);
 }
 
 static LeafNode* leaf_node_clone(const LeafNode *original) {
@@ -490,17 +483,13 @@ static InternalNode* rebalance(InternalNode *left, InternalNode *centre,
     if (is_top == false) {
       return internal_node_new_above1(set_sizes(new_all, shift));
     }
-    else {
-      return new_all;
-    }
+    return new_all;
   }
-  else {
-    InternalNode *new_left = internal_node_copy(new_all, 0, RRB_BRANCHING);
-    InternalNode *new_right = internal_node_copy(new_all, RRB_BRANCHING,
-                                                 top_len - RRB_BRANCHING);
-    return internal_node_new_above(set_sizes(new_left, shift),
-                                   set_sizes(new_right, shift));
-  }
+  InternalNode *new_left = internal_node_copy(new_all, 0, RRB_BRANCHING);
+  InternalNode *new_right = internal_node_copy(new_all, RRB_BRANCHING,
+                                               top_len - RRB_BRANCHING);
+  return internal_node_new_above(set_sizes(new_left, shift),
+                                 set_sizes(new_right, shift));
 }
 
 /**
@@ -573,81 +562,83 @@ static InternalNode* execute_concat_plan(InternalNode *all, uint32_t *node_size,
         // size
         idx++;
         new_all->child[i] = (InternalNode *) old;
+        continue;
       }
-      else {
-        LeafNode *new_node = leaf_node_create(new_size);
-        uint32_t cur_size = 0;
-        // cur_size is the current size of the new node
-        // (the amount of elements copied into it so far)
 
-        while (cur_size < new_size /*&& idx < all->len*/) {
-          // the commented out check is verified by create_concat_plan --
-          // otherwise the implementation is erroneous!
-          const LeafNode *old_node = (LeafNode *) all->child[idx];
+      LeafNode *new_node = leaf_node_create(new_size);
+      uint32_t cur_size = 0;
+      // cur_size is the current size of the new node
+      // (the amount of elements copied into it so far)
 
-          if (new_size - cur_size >= old_node->len - offset) {
-            // if this node can contain all elements not copied in the old node,
-            // copy all of them into this node
-            memcpy(&new_node->child[cur_size], &old_node->child[offset],
-                   (old_node->len - offset) * sizeof(void *));
-            cur_size += old_node->len - offset;
-            idx++;
-            offset = 0;
-          }
-          else {
-            // if this node can't contain all the elements not copied in the old
-            // node, copy as many as we can and pass the old node over to the
-            // new node after this one.
-            memcpy(&new_node->child[cur_size], &old_node->child[offset],
-                   (new_size - cur_size) * sizeof(void *));
-            offset += new_size - cur_size;
-            cur_size = new_size;
-          }
+      while (cur_size < new_size /*&& idx < all->len*/) {
+        // the commented out check is verified by create_concat_plan --
+        // otherwise the implementation is erroneous!
+        const LeafNode *old_node = (LeafNode *) all->child[idx];
+
+        if (new_size - cur_size >= old_node->len - offset) {
+          // if this node can contain all elements not copied in the old node,
+          // copy all of them into this node
+          memcpy(&new_node->child[cur_size], &old_node->child[offset],
+                 (old_node->len - offset) * sizeof(void *));
+          cur_size += old_node->len - offset;
+          idx++;
+          offset = 0;
         }
-
-        new_all->child[i] = (InternalNode *) new_node;
+        else {
+          // if this node can't contain all the elements not copied in the old
+          // node, copy as many as we can and pass the old node over to the
+          // new node after this one.
+          memcpy(&new_node->child[cur_size], &old_node->child[offset],
+                 (new_size - cur_size) * sizeof(void *));
+          offset += new_size - cur_size;
+          cur_size = new_size;
+        }
       }
+
+      new_all->child[i] = (InternalNode *) new_node;
     }
+    return new_all;
   }
-  else { // not at lowest non-leaf level
-    // this is ALMOST equivalent with the leaf node copying, the only difference
-    // is that this is with internal nodes and the fact that they have to create
-    // their size tables.
 
-    // As that's the only difference, I won't bother with comments here.
-    for (uint32_t i = 0; i < slen; i++) {
-      const uint32_t new_size = node_size[i];
-      InternalNode *old = all->child[idx];
+  // not at lowest non-leaf level
+  // this is ALMOST equivalent with the leaf node copying, the only difference
+  // is that this is with internal nodes and the fact that they have to create
+  // their size tables.
 
-      if (offset == 0 && new_size == old->len) {
+  // As that's the only difference, I won't bother with comments here.
+  for (uint32_t i = 0; i < slen; i++) {
+    const uint32_t new_size = node_size[i];
+    InternalNode *old = all->child[idx];
+
+    if (offset == 0 && new_size == old->len) {
+      idx++;
+      new_all->child[i] = old;
+      continue;
+    }
+
+    InternalNode *new_node = internal_node_create(new_size);
+    uint32_t cur_size = 0;
+    while (cur_size < new_size) {
+      const InternalNode *old_node = all->child[idx];
+
+      if (new_size - cur_size >= old_node->len - offset) {
+        memcpy(&new_node->child[cur_size], &old_node->child[offset],
+               (old_node->len - offset) * sizeof(InternalNode *));
+        cur_size += old_node->len - offset;
         idx++;
-        new_all->child[i] = old;
+        offset = 0;
       }
       else {
-        InternalNode *new_node = internal_node_create(new_size);
-        uint32_t cur_size = 0;
-        while (cur_size < new_size) {
-          const InternalNode *old_node = all->child[idx];
-
-          if (new_size - cur_size >= old_node->len - offset) {
-            memcpy(&new_node->child[cur_size], &old_node->child[offset],
-                   (old_node->len - offset) * sizeof(InternalNode *));
-            cur_size += old_node->len - offset;
-            idx++;
-            offset = 0;
-          }
-          else {
-            memcpy(&new_node->child[cur_size], &old_node->child[offset],
-                   (new_size - cur_size) * sizeof(InternalNode *));
-            offset += new_size - cur_size;
-            cur_size = new_size;
-          }
-        }
-        set_sizes(new_node, DEC_SHIFT(shift)); // This is where we set sizes
-        new_all->child[i] = new_node;
+        memcpy(&new_node->child[cur_size], &old_node->child[offset],
+               (new_size - cur_size) * sizeof(InternalNode *));
+        offset += new_size - cur_size;
+        cur_size = new_size;
       }
     }
+    set_sizes(new_node, DEC_SHIFT(shift)); // This is where we set sizes
+    new_all->child[i] = new_node;
   }
+
   return new_all;
 }
 
@@ -656,10 +647,9 @@ static uint32_t find_shift(TreeNode *node) {
   if (node->type == LEAF_NODE) {
     return 0;
   }
-  else { // must be internal node
-    InternalNode *inode = (InternalNode *) node;
-    return RRB_BITS + find_shift((TreeNode *) inode->child[0]);
-  }
+  // must be internal node
+  InternalNode *inode = (InternalNode *) node;
+  return RRB_BITS + find_shift((TreeNode *) inode->child[0]);
 }
 
 static InternalNode* set_sizes(InternalNode *node, uint32_t shift) {
@@ -676,27 +666,23 @@ static InternalNode* set_sizes(InternalNode *node, uint32_t shift) {
 }
 
 static uint32_t size_sub_trie(TreeNode *node, uint32_t shift) {
-  if (shift > LEAF_NODE_SHIFT) {
-    InternalNode *internal = (InternalNode *) node;
-    if (internal->size_table == NULL) {
-      uint32_t len = internal->len;
-      uint32_t child_shift = DEC_SHIFT(shift);
-      // TODO: for loopify recursive calls
-      /* We're not sure how many are in the last child, so look it up */
-      uint32_t last_size =
-        size_sub_trie((TreeNode *) internal->child[len - 1], child_shift);
-      /* We know all but the last ones are filled, and they have child_shift
-         elements in them. */
-      return ((len - 1) << shift) + last_size;
-    }
-    else {
-      return internal->size_table->size[internal->len - 1];
-    }
-  }
-  else {
+  if (shift <= LEAF_NODE_SHIFT) {
     LeafNode *leaf = (LeafNode *) node;
     return leaf->len;
   }
+  InternalNode *internal = (InternalNode *) node;
+  if (internal->size_table != NULL) {
+    return internal->size_table->size[internal->len - 1];
+  }
+  uint32_t len = internal->len;
+  uint32_t child_shift = DEC_SHIFT(shift);
+  // TODO: for loopify recursive calls
+  /* We're not sure how many are in the last child, so look it up */
+  uint32_t last_size =
+    size_sub_trie((TreeNode *) internal->child[len - 1], child_shift);
+  /* We know all but the last ones are filled, and they have child_shift
+     elements in them. */
+  return ((len - 1) << shift) + last_size;
 }
 
 static inline RRB* rrb_tail_push(const RRB *restrict rrb, const void *restrict elt);
@@ -821,41 +807,41 @@ static RRB* push_down_tail(const RRB *restrict rrb, RRB *restrict new_rrb,
     shift -= RRB_BITS;
   }
 
-  // Increasing height of tree.
-  if (nodes_to_copy == 0) {
-    InternalNode *new_root = internal_node_create(2);
-    new_root->child[0] = (InternalNode *) rrb->root;
-    new_rrb->root = (TreeNode *) new_root;
-    new_rrb->shift = INC_SHIFT(RRB_SHIFT(new_rrb));
-
-    // create size table if the original rrb root has a size table.
-    if (rrb->root->type != LEAF_NODE &&
-        ((const InternalNode *)rrb->root)->size_table != NULL) {
-      RRBSizeTable *table = size_table_create(2);
-      table->size[0] = rrb->cnt - old_tail->len;
-      // If we insert the tail, the old size minus the old tail size will be the
-      // amount of elements in the left branch. If there is no tail, the size is
-      // just the old rrb-tree.
-
-      table->size[1] = rrb->cnt;
-      // If we insert the tail, the old size would include the tail.
-      // Consequently, it has to be the old size. If we have no tail, we append
-      // a single element to the old vector, therefore it has to be one more
-      // than the original.
-
-      new_root->size_table = table;
-    }
-
-    // nodes visited == original rrb tree height. Nodes visited > 0.
-    InternalNode **to_set = append_empty(&((InternalNode *) new_rrb->root)->child[1], 1,
-                                         nodes_visited);
-    *to_set = (InternalNode *) old_tail;
-  }
-  else {
+  if (nodes_to_copy != 0) {
     InternalNode **node = copy_first_k(rrb, new_rrb, nodes_to_copy, old_tail->len);
     InternalNode **to_set = append_empty(node, pos, nodes_visited - nodes_to_copy);
     *to_set = (InternalNode *) old_tail;
+    return new_rrb;
   }
+
+  // Increasing height of tree.
+  InternalNode *new_root = internal_node_create(2);
+  new_root->child[0] = (InternalNode *) rrb->root;
+  new_rrb->root = (TreeNode *) new_root;
+  new_rrb->shift = INC_SHIFT(RRB_SHIFT(new_rrb));
+
+  // create size table if the original rrb root has a size table.
+  if (rrb->root->type != LEAF_NODE &&
+      ((const InternalNode *)rrb->root)->size_table != NULL) {
+    RRBSizeTable *table = size_table_create(2);
+    table->size[0] = rrb->cnt - old_tail->len;
+    // If we insert the tail, the old size minus the old tail size will be the
+    // amount of elements in the left branch. If there is no tail, the size is
+    // just the old rrb-tree.
+
+    table->size[1] = rrb->cnt;
+    // If we insert the tail, the old size would include the tail.
+    // Consequently, it has to be the old size. If we have no tail, we append
+    // a single element to the old vector, therefore it has to be one more
+    // than the original.
+
+    new_root->size_table = table;
+  }
+
+  // nodes visited == original rrb tree height. Nodes visited > 0.
+  InternalNode **to_set = append_empty(&((InternalNode *) new_rrb->root)->child[1], 1,
+                                       nodes_visited);
+  *to_set = (InternalNode *) old_tail;
 
   return new_rrb;
 }
@@ -917,21 +903,19 @@ static InternalNode** copy_first_k(const RRB *rrb, RRB *new_rrb, const uint32_t 
 
 static InternalNode** append_empty(InternalNode **to_set, uint32_t pos,
                                    uint32_t empty_height) {
-  if (0 < empty_height) {
-    InternalNode *leaf = internal_node_create(1);
-    InternalNode *empty = (InternalNode *) leaf;
-    for (uint32_t i = 1; i < empty_height; i++) {
-      InternalNode *new_empty = internal_node_create(1);
-      new_empty->child[0] = empty;
-      empty = new_empty;
-    }
-    // this root node must be one larger, otherwise segfault
-    *to_set = empty;
-    return &leaf->child[0];
-  }
-  else {
+  if (empty_height >= 0) {
     return to_set;
   }
+  InternalNode *leaf = internal_node_create(1);
+  InternalNode *empty = (InternalNode *) leaf;
+  for (uint32_t i = 1; i < empty_height; i++) {
+    InternalNode *new_empty = internal_node_create(1);
+    new_empty->child[0] = empty;
+    empty = new_empty;
+  }
+  // this root node must be one larger, otherwise segfault
+  *to_set = empty;
+  return &leaf->child[0];
 }
 
 static uint32_t sized_pos(const InternalNode *node, uint32_t *index,
@@ -961,19 +945,17 @@ void* rrb_nth(const RRB *rrb, uint32_t index) {
   if (tail_offset <= index) {
     return rrb->tail->child[index - tail_offset];
   }
-  else {
-    const InternalNode *current = (const InternalNode *) rrb->root;
-    for (uint32_t shift = RRB_SHIFT(rrb); shift > 0; shift -= RRB_BITS) {
-      if (current->size_table == NULL) {
-        const uint32_t subidx = (index >> shift) & RRB_MASK;
-        current = current->child[subidx];
-      }
-      else {
-        current = sized(current, &index, shift);
-      }
+  const InternalNode *current = (const InternalNode *) rrb->root;
+  for (uint32_t shift = RRB_SHIFT(rrb); shift > 0; shift -= RRB_BITS) {
+    if (current->size_table == NULL) {
+      const uint32_t subidx = (index >> shift) & RRB_MASK;
+      current = current->child[subidx];
     }
-    return ((const LeafNode *)current)->child[index & RRB_MASK];
+    else {
+      current = sized(current, &index, shift);
+    }
   }
+  return ((const LeafNode *)current)->child[index & RRB_MASK];
 }
 
 uint32_t rrb_count(const RRB *rrb) {
@@ -1046,35 +1028,33 @@ static RRB* slice_right(const RRB *rrb, const uint32_t right) {
   if (right == 0) {
     return rrb_create();
   }
-  else if (right < rrb->cnt) {
-    const uint32_t tail_offset = rrb->cnt - rrb->tail_len;
-    // Can just cut the tail slightly
-    if (tail_offset < right) {
-      RRB *new_rrb = rrb_head_clone(rrb);
-      const uint32_t new_tail_len = right - tail_offset;
-      LeafNode *new_tail = leaf_node_create(new_tail_len);
-      memcpy(new_tail->child, rrb->tail->child, new_tail_len * sizeof(void *));
-      new_rrb->cnt = right;
-      new_rrb->tail = new_tail;
-      new_rrb->tail_len = new_tail_len;
-      return new_rrb;
-    }
-
-    RRB *new_rrb = rrb_mutable_create();
-    TreeNode *root = slice_right_rec(&RRB_SHIFT(new_rrb), rrb->root, right - 1,
-                                     RRB_SHIFT(rrb), false);
-    new_rrb->cnt = right;
-    new_rrb->root = root;
-
-    // Not sure if this is necessary in this part of the program, due to issues
-    // wrt. slice_left and roots without size tables.
-    promote_rightmost_leaf(new_rrb);
-    new_rrb->tail_len = new_rrb->tail->len;
-    return new_rrb;
-  }
-  else {
+  if (right >= rrb->cnt) {
     return (RRB *) rrb;
   }
+  const uint32_t tail_offset = rrb->cnt - rrb->tail_len;
+  // Can just cut the tail slightly
+  if (tail_offset < right) {
+    RRB *new_rrb = rrb_head_clone(rrb);
+    const uint32_t new_tail_len = right - tail_offset;
+    LeafNode *new_tail = leaf_node_create(new_tail_len);
+    memcpy(new_tail->child, rrb->tail->child, new_tail_len * sizeof(void *));
+    new_rrb->cnt = right;
+    new_rrb->tail = new_tail;
+    new_rrb->tail_len = new_tail_len;
+    return new_rrb;
+  }
+
+  RRB *new_rrb = rrb_mutable_create();
+  TreeNode *root = slice_right_rec(&RRB_SHIFT(new_rrb), rrb->root, right - 1,
+                                   RRB_SHIFT(rrb), false);
+  new_rrb->cnt = right;
+  new_rrb->root = root;
+
+  // Not sure if this is necessary in this part of the program, due to issues
+  // wrt. slice_left and roots without size tables.
+  promote_rightmost_leaf(new_rrb);
+  new_rrb->tail_len = new_rrb->tail->len;
+  return new_rrb;
 }
 
 static TreeNode* slice_right_rec(uint32_t *total_shift, const TreeNode *root,
@@ -1097,86 +1077,74 @@ static TreeNode* slice_right_rec(uint32_t *total_shift, const TreeNode *root,
           *total_shift = shift;
           return (TreeNode *) right_hand_parent;
         }
-        else { // if (!has_left)
-          return right_hand_node;
-        }
+        return right_hand_node;
       }
-      else { // if (subidx != 0)
-        InternalNode *sliced_root = internal_node_create(subidx + 1);
-        memcpy(sliced_root->child, internal_root->child,
-               subidx * sizeof(InternalNode *));
-        sliced_root->child[subidx] = (InternalNode *) right_hand_node;
-        *total_shift = shift;
-        return (TreeNode *) sliced_root;
-      }
+      InternalNode *sliced_root = internal_node_create(subidx + 1);
+      memcpy(sliced_root->child, internal_root->child,
+             subidx * sizeof(InternalNode *));
+      sliced_root->child[subidx] = (InternalNode *) right_hand_node;
+      *total_shift = shift;
+      return (TreeNode *) sliced_root;
     }
-    else { // if (internal_root->size_table != NULL)
-      RRBSizeTable *table = internal_root->size_table;
-      uint32_t idx = right;
+    RRBSizeTable *table = internal_root->size_table;
+    uint32_t idx = right;
 
-      while (table->size[subidx] <= idx) {
-        subidx++;
-      }
-      if (subidx != 0) {
-        idx -= table->size[subidx-1];
-      }
+    while (table->size[subidx] <= idx) {
+      subidx++;
+    }
+    if (subidx != 0) {
+      idx -= table->size[subidx-1];
+    }
 
-      const TreeNode *right_hand_node =
-        slice_right_rec(total_shift, internal_root->child[subidx], idx,
-                        subshift, (subidx != 0) | has_left);
-      if (subidx == 0) {
-        if (has_left) {
-          // As there is one above us, must place the right hand node in a
-          // one-node
-          InternalNode *right_hand_parent = internal_node_create(1);
-          RRBSizeTable *right_hand_table = size_table_create(1);
+    const TreeNode *right_hand_node =
+      slice_right_rec(total_shift, internal_root->child[subidx], idx,
+                      subshift, (subidx != 0) | has_left);
+    if (subidx == 0) {
+      if (has_left) {
+        // As there is one above us, must place the right hand node in a
+        // one-node
+        InternalNode *right_hand_parent = internal_node_create(1);
+        RRBSizeTable *right_hand_table = size_table_create(1);
 
-          right_hand_table->size[0] = right + 1;
-          // TODO: Not set size_table if the underlying node doesn't have a
-          // table as well.
-          right_hand_parent->size_table = right_hand_table;
-          right_hand_parent->child[0] = (InternalNode *) right_hand_node;
-
-          *total_shift = shift;
-          return (TreeNode *) right_hand_parent;
-        }
-        else { // if (!has_left)
-          return (TreeNode *) right_hand_node;
-        }
-      }
-      else { // if (subidx != 0)
-        InternalNode *sliced_root = internal_node_create(subidx+1);
-        RRBSizeTable *sliced_table = size_table_create(subidx+1);
-
-        memcpy(sliced_table->size, table->size, subidx * sizeof(uint32_t));
-        sliced_table->size[subidx] = right+1;
-
-        memcpy(sliced_root->child, internal_root->child,
-               subidx * sizeof(InternalNode *));
-        sliced_root->size_table = sliced_table;
-        sliced_root->child[subidx] = (InternalNode *) right_hand_node;
+        right_hand_table->size[0] = right + 1;
+        // TODO: Not set size_table if the underlying node doesn't have a
+        // table as well.
+        right_hand_parent->size_table = right_hand_table;
+        right_hand_parent->child[0] = (InternalNode *) right_hand_node;
 
         *total_shift = shift;
-        return (TreeNode *) sliced_root;
+        return (TreeNode *) right_hand_parent;
       }
+      return (TreeNode *) right_hand_node;
     }
-  }
-  else { // if (shift <= RRB_BRANCHING)
-    // Just pure copying into a new node
-    const LeafNode *leaf_root = (LeafNode *) root;
-    LeafNode *left_vals = leaf_node_create(subidx + 1);
+    InternalNode *sliced_root = internal_node_create(subidx+1);
+    RRBSizeTable *sliced_table = size_table_create(subidx+1);
 
-    memcpy(left_vals->child, leaf_root->child, (subidx + 1) * sizeof(void *));
+    memcpy(sliced_table->size, table->size, subidx * sizeof(uint32_t));
+    sliced_table->size[subidx] = right+1;
+
+    memcpy(sliced_root->child, internal_root->child,
+           subidx * sizeof(InternalNode *));
+    sliced_root->size_table = sliced_table;
+    sliced_root->child[subidx] = (InternalNode *) right_hand_node;
+
     *total_shift = shift;
-    return (TreeNode *) left_vals;
+    return (TreeNode *) sliced_root;
   }
+  // Just pure copying into a new node
+  const LeafNode *leaf_root = (LeafNode *) root;
+  LeafNode *left_vals = leaf_node_create(subidx + 1);
+
+  memcpy(left_vals->child, leaf_root->child, (subidx + 1) * sizeof(void *));
+  *total_shift = shift;
+  return (TreeNode *) left_vals;
 }
 
 const RRB* slice_left(RRB *rrb, uint32_t left) {
   if (left >= rrb->cnt) {
     return rrb_create();
   }
-  else if (left > 0) {
+  if (left > 0) {
     const uint32_t remaining = rrb->cnt - left;
 
     // If we slice into the tail, we just need to modify the tail itself
@@ -1285,80 +1253,74 @@ static TreeNode* slice_left_rec(uint32_t *total_shift, const TreeNode *root,
       slice_left_rec(total_shift, child, idx, subshift,
                      (subidx != last_slot) | has_right);
     if (subidx == last_slot) { // No more slots left
-      if (has_right) {
-        InternalNode *left_hand_parent = internal_node_create(1);
-        const InternalNode *internal_left_hand_node = (InternalNode *) left_hand_node;
-        left_hand_parent->child[0] = internal_left_hand_node;
-
-        if (subshift != LEAF_NODE_SHIFT && internal_left_hand_node->size_table != NULL) {
-          RRBSizeTable *sliced_table = size_table_create(1);
-          sliced_table->size[0] =
-            internal_left_hand_node->size_table->size[internal_left_hand_node->len-1];
-          left_hand_parent->size_table = sliced_table;
-        }
-        *total_shift = shift;
-        return (TreeNode *) left_hand_parent;
-      }
-      else { // if (!has_right)
+      if (!has_right) {
         return left_hand_node;
       }
-    }
-    else { // if (subidx != last_slot)
+      InternalNode *left_hand_parent = internal_node_create(1);
+      const InternalNode *internal_left_hand_node = (InternalNode *) left_hand_node;
+      left_hand_parent->child[0] = internal_left_hand_node;
 
-      const uint32_t sliced_len = internal_root->len - subidx;
-      InternalNode *sliced_root = internal_node_create(sliced_len);
-
-      // TODO: Can shrink size here if sliced_len == 2, using the ambidextrous
-      // vector technique w. offset. Takes constant time.
-
-      memcpy(&sliced_root->child[1], &internal_root->child[subidx + 1],
-             (sliced_len - 1) * sizeof(InternalNode *));
-
-      const RRBSizeTable *table = internal_root->size_table;
-
-      // TODO: Can check if left is a power of the tree size. If so, all nodes
-      // will be completely populated, and we can ignore the size table. Most
-      // importantly, this will remove the need to alloc a size table, which
-      // increases perf.
-      RRBSizeTable *sliced_table = size_table_create(sliced_len);
-
-      if (table == NULL) {
-        for (uint32_t i = 0; i < sliced_len; i++) {
-          // left is total amount sliced off. By adding in subidx, we get faster
-          // computation later on.
-          sliced_table->size[i] = (subidx + 1 + i) << shift;
-          // NOTE: This doesn't really work properly for top root, as last node
-          // may have a higher count than it *actually* has. To remedy for this,
-          // the top function performs a check afterwards, which may insert the
-          // correct value if there's a size table in the root.
-        }
+      if (subshift != LEAF_NODE_SHIFT && internal_left_hand_node->size_table != NULL) {
+        RRBSizeTable *sliced_table = size_table_create(1);
+        sliced_table->size[0] =
+          internal_left_hand_node->size_table->size[internal_left_hand_node->len-1];
+        left_hand_parent->size_table = sliced_table;
       }
-      else { // if (table != NULL)
-        memcpy(sliced_table->size, &table->size[subidx],
-               sliced_len * sizeof(uint32_t));
-      }
-
-      for (uint32_t i = 0; i < sliced_len; i++) {
-        sliced_table->size[i] -= left;
-      }
-
-      sliced_root->size_table = sliced_table;
-      sliced_root->child[0] = (InternalNode *) left_hand_node;
       *total_shift = shift;
-      return (TreeNode *) sliced_root;
+      return (TreeNode *) left_hand_parent;
     }
-  }
-  else { // if (shift <= RRB_BRANCHING)
-    LeafNode *leaf_root = (LeafNode *) root;
-    const uint32_t right_vals_len = leaf_root->len - subidx;
-    LeafNode *right_vals = leaf_node_create(right_vals_len);
+    const uint32_t sliced_len = internal_root->len - subidx;
+    InternalNode *sliced_root = internal_node_create(sliced_len);
 
-    memcpy(right_vals->child, &leaf_root->child[subidx],
-           right_vals_len * sizeof(void *));
+    // TODO: Can shrink size here if sliced_len == 2, using the ambidextrous
+    // vector technique w. offset. Takes constant time.
+
+    memcpy(&sliced_root->child[1], &internal_root->child[subidx + 1],
+           (sliced_len - 1) * sizeof(InternalNode *));
+
+    const RRBSizeTable *table = internal_root->size_table;
+
+    // TODO: Can check if left is a power of the tree size. If so, all nodes
+    // will be completely populated, and we can ignore the size table. Most
+    // importantly, this will remove the need to alloc a size table, which
+    // increases perf.
+    RRBSizeTable *sliced_table = size_table_create(sliced_len);
+
+    if (table == NULL) {
+      for (uint32_t i = 0; i < sliced_len; i++) {
+        // left is total amount sliced off. By adding in subidx, we get faster
+        // computation later on.
+        sliced_table->size[i] = (subidx + 1 + i) << shift;
+        // NOTE: This doesn't really work properly for top root, as last node
+        // may have a higher count than it *actually* has. To remedy for this,
+        // the top function performs a check afterwards, which may insert the
+        // correct value if there's a size table in the root.
+      }
+    }
+    else { // if (table != NULL)
+      memcpy(sliced_table->size, &table->size[subidx],
+             sliced_len * sizeof(uint32_t));
+    }
+
+    for (uint32_t i = 0; i < sliced_len; i++) {
+      sliced_table->size[i] -= left;
+    }
+
+    sliced_root->size_table = sliced_table;
+    sliced_root->child[0] = (InternalNode *) left_hand_node;
     *total_shift = shift;
-
-    return (TreeNode *) right_vals;
+    return (TreeNode *) sliced_root;
   }
+
+  LeafNode *leaf_root = (LeafNode *) root;
+  const uint32_t right_vals_len = leaf_root->len - subidx;
+  LeafNode *right_vals = leaf_node_create(right_vals_len);
+
+  memcpy(right_vals->child, &leaf_root->child[subidx],
+         right_vals_len * sizeof(void *));
+  *total_shift = shift;
+
+  return (TreeNode *) right_vals;
 }
 
 const RRB* rrb_slice(const RRB *rrb, uint32_t from, uint32_t to) {
@@ -1366,41 +1328,39 @@ const RRB* rrb_slice(const RRB *rrb, uint32_t from, uint32_t to) {
 }
 
 const RRB* rrb_update(const RRB *restrict rrb, uint32_t index, const void *restrict elt) {
-  if (index < rrb->cnt) {
-    RRB *new_rrb = rrb_head_clone(rrb);
-    const uint32_t tail_offset = rrb->cnt - rrb->tail_len;
-    if (tail_offset <= index) {
-      LeafNode *new_tail = leaf_node_clone(rrb->tail);
-      new_tail->child[index - tail_offset] = elt;
-      new_rrb->tail = new_tail;
-      return new_rrb;
-    }
-    InternalNode **previous_pointer = (InternalNode **) &new_rrb->root;
-    InternalNode *current = (InternalNode *) rrb->root;
-    for (uint32_t shift = RRB_SHIFT(rrb); shift > 0; shift -= RRB_BITS) {
-      current = internal_node_clone(current);
-      *previous_pointer = current;
-
-      uint32_t child_index;
-      if (current->size_table == NULL) {
-        child_index = (index >> shift) & RRB_MASK;
-      }
-      else {
-        child_index = sized_pos(current, &index, shift);
-      }
-      previous_pointer = &current->child[child_index];
-      current = current->child[child_index];
-    }
-    
-    LeafNode *leaf = (LeafNode *) current;
-    leaf = leaf_node_clone(leaf);
-    *previous_pointer = (InternalNode *) leaf;
-    leaf->child[index & RRB_MASK] = elt;
-    return new_rrb;
-  }
-  else {
+  if (index >= rrb->cnt) {
     return NULL;
   }
+  RRB *new_rrb = rrb_head_clone(rrb);
+  const uint32_t tail_offset = rrb->cnt - rrb->tail_len;
+  if (tail_offset <= index) {
+    LeafNode *new_tail = leaf_node_clone(rrb->tail);
+    new_tail->child[index - tail_offset] = elt;
+    new_rrb->tail = new_tail;
+    return new_rrb;
+  }
+  InternalNode **previous_pointer = (InternalNode **) &new_rrb->root;
+  InternalNode *current = (InternalNode *) rrb->root;
+  for (uint32_t shift = RRB_SHIFT(rrb); shift > 0; shift -= RRB_BITS) {
+    current = internal_node_clone(current);
+    *previous_pointer = current;
+
+    uint32_t child_index;
+    if (current->size_table == NULL) {
+      child_index = (index >> shift) & RRB_MASK;
+    }
+    else {
+      child_index = sized_pos(current, &index, shift);
+    }
+    previous_pointer = &current->child[child_index];
+    current = current->child[child_index];
+  }
+
+  LeafNode *leaf = (LeafNode *) current;
+  leaf = leaf_node_clone(leaf);
+  *previous_pointer = (InternalNode *) leaf;
+  leaf->child[index & RRB_MASK] = elt;
+  return new_rrb;
 }
 
 // Also assume direct append
@@ -1415,12 +1375,11 @@ const RRB* rrb_pop(const RRB *rrb) {
     promote_rightmost_leaf(new_rrb);
     return new_rrb;
   }
-  else {
-    LeafNode *new_tail = leaf_node_dec(rrb->tail);
-    new_rrb->tail_len--;
-    new_rrb->tail = new_tail;
-    return new_rrb;
-  }
+
+  LeafNode *new_tail = leaf_node_dec(rrb->tail);
+  new_rrb->tail_len--;
+  new_rrb->tail = new_tail;
+  return new_rrb;
 }
 
 #include "rrb_transients.c"

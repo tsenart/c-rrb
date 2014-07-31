@@ -130,27 +130,21 @@ static RRBSizeTable* ensure_size_table_editable(const RRBSizeTable *table,
   if (table->guid == guid) {
     return table;
   }
-  else {
-    return transient_size_table_clone(table, len, guid);
-  }
+  return transient_size_table_clone(table, len, guid);
 }
 
 static InternalNode* ensure_internal_editable(InternalNode *internal, const void *guid) {
   if (internal->guid == guid) {
     return internal;
   }
-  else {
-    return transient_internal_node_clone(internal, guid);
-  }
+  return transient_internal_node_clone(internal, guid);
 }
 
 static LeafNode* ensure_leaf_editable(LeafNode *leaf, const void *guid) {
   if (leaf->guid == guid) {
     return leaf;
   }
-  else {
-    return transient_leaf_node_clone(leaf, guid);
-  }
+  return transient_leaf_node_clone(leaf, guid);
 }
 
 TransientRRB* rrb_to_transient(const RRB *rrb) {
@@ -414,25 +408,24 @@ static InternalNode** mutate_first_k(TransientRRB *trrb, const uint32_t k) {
 
 static InternalNode** new_editable_path(InternalNode **to_set, uint32_t pos,
                                         uint32_t empty_height, const void* guid) {
-  if (0 < empty_height) {
-    InternalNode *leaf = transient_internal_node_create();
-    leaf->guid = guid;
-    leaf->len = 1;
-
-    InternalNode *empty = (InternalNode *) leaf;
-    for (uint32_t i = 1; i < empty_height; i++) {
-      InternalNode *new_empty = transient_internal_node_create();
-      new_empty->guid = guid;
-      new_empty->len = 1;
-      new_empty->child[0] = empty;
-      empty = new_empty;
-    }
-    *to_set = empty;
-    return &leaf->child[0];
-  }
-  else {
+  if (empty_height >= 0) {
     return to_set;
   }
+
+  InternalNode *leaf = transient_internal_node_create();
+  leaf->guid = guid;
+  leaf->len = 1;
+
+  InternalNode *empty = (InternalNode *) leaf;
+  for (uint32_t i = 1; i < empty_height; i++) {
+    InternalNode *new_empty = transient_internal_node_create();
+    new_empty->guid = guid;
+    new_empty->len = 1;
+    new_empty->child[0] = empty;
+    empty = new_empty;
+  }
+  *to_set = empty;
+  return &leaf->child[0];
 }
 
 // transient_rrb_update is effectively the same as rrb_update, but may mutate
@@ -442,38 +435,36 @@ TransientRRB* transient_rrb_update(TransientRRB *restrict trrb, uint32_t index,
                                    const void *restrict elt) {
   check_transience(trrb);
   const void* guid = trrb->guid;
-  if (index < trrb->cnt) {
-    const uint32_t tail_offset = trrb->cnt - trrb->tail_len;
-    if (tail_offset <= index) {
-      trrb->tail->child[index - tail_offset] = elt;
-      return trrb;
-    }
-    InternalNode **previous_pointer = (InternalNode **) &trrb->root;
-    InternalNode *current = (InternalNode *) trrb->root;
-    for (uint32_t shift = RRB_SHIFT(trrb); shift > 0; shift -= RRB_BITS) {
-      current = ensure_internal_editable(current, guid);
-      *previous_pointer = current;
-
-      uint32_t child_index;
-      if (current->size_table == NULL) {
-        child_index = (index >> shift) & RRB_MASK;
-      }
-      else {
-        child_index = sized_pos(current, &index, shift);
-      }
-      previous_pointer = &current->child[child_index];
-      current = current->child[child_index];
-    }
-    
-    LeafNode *leaf = (LeafNode *) current;
-    leaf = ensure_leaf_editable((LeafNode *) leaf, guid);
-    *previous_pointer = (InternalNode *) leaf;
-    leaf->child[index & RRB_MASK] = elt;
-    return trrb;
-  }
-  else {
+  if (index >= trrb->cnt) {
     return NULL;
   }
+  const uint32_t tail_offset = trrb->cnt - trrb->tail_len;
+  if (tail_offset <= index) {
+    trrb->tail->child[index - tail_offset] = elt;
+    return trrb;
+  }
+  InternalNode **previous_pointer = (InternalNode **) &trrb->root;
+  InternalNode *current = (InternalNode *) trrb->root;
+  for (uint32_t shift = RRB_SHIFT(trrb); shift > 0; shift -= RRB_BITS) {
+    current = ensure_internal_editable(current, guid);
+    *previous_pointer = current;
+
+    uint32_t child_index;
+    if (current->size_table == NULL) {
+      child_index = (index >> shift) & RRB_MASK;
+    }
+    else {
+      child_index = sized_pos(current, &index, shift);
+    }
+    previous_pointer = &current->child[child_index];
+    current = current->child[child_index];
+  }
+
+  LeafNode *leaf = (LeafNode *) current;
+  leaf = ensure_leaf_editable((LeafNode *) leaf, guid);
+  *previous_pointer = (InternalNode *) leaf;
+  leaf->child[index & RRB_MASK] = elt;
+  return trrb;
 }
 
 TransientRRB* transient_rrb_pop(TransientRRB *trrb) {
@@ -491,13 +482,12 @@ TransientRRB* transient_rrb_pop(TransientRRB *trrb) {
     transient_promote_rightmost_leaf(trrb);
     return trrb;
   }
-  else {
-    trrb->tail->child[trrb->tail_len - 1] = NULL;
-    trrb->tail_len--;
-    trrb->tail->len--;
 
-    return trrb;
-  }
+  trrb->tail->child[trrb->tail_len - 1] = NULL;
+  trrb->tail_len--;
+  trrb->tail->len--;
+
+  return trrb;
 }
 
 void* transient_promote_rightmost_leaf(TransientRRB* trrb) {
